@@ -1,0 +1,24 @@
+[tool.poetry]
+name = "lip-sync"
+version = "0.1.0"
+description = ""
+authors = ["Alex Jercan <jercan_alex27@yahoo.com>"]
+readme = "README.md"
+
+[tool.poetry.dependencies]
+python = "^3.10"
+ffmpeg-python = "^0.2.0"
+opencv-python = "^4.8.1.78"
+
+[tool.poetry.scripts]
+lip-sync = "lip_sync.main:main"
+
+[tool.poetry.group.dev.dependencies]
+black = "^23.9.1"
+isort = "^5.12.0"
+pylint = "^3.0.1"
+mypy = "^1.6.0"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
