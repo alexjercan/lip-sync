@@ -15,7 +15,13 @@ def run_rhubarb(audio: str) -> Optional[List[Tuple[str, float]]]:
     """Run the rhubarb cli tool to generate the phoneme's
 
     This function will work only with `.wav` or `.ogg` audio formats. This is
-    how rhubarb works. And could be fixed in the future.
+    how rhubarb works. For other formats, it will convert the audio file to
+    `.wav` format and then run rhubarb. The converted file name will be the
+    same as the original file but with the `.wav` extension. For example, if
+    the audio file is `some_file.mp3`, the converted file will be
+    `some_file.mp3.wav`. This will automatically overwrite any existing file
+    with the same name. If you want to keep the original file, make a copy of
+    it before running this function.
 
     It will generate a list with tuple elements. Each tuple will contain the
     alphabetical name of the phoneme (A-H,X) and the duration of that phoneme.
@@ -34,6 +40,11 @@ def run_rhubarb(audio: str) -> Optional[List[Tuple[str, float]]]:
     Optional[List[Tuple[str, float]]]
         The chunks as a list of tuples of names and durations
     """
+    if not audio.endswith(".wav") and not audio.endswith(".ogg"):
+        audio_wav = audio + ".wav"
+        ffmpeg.input(audio).output(audio_wav).overwrite_output().run()
+        audio = audio_wav
+
     try:
         result = subprocess.run(
             ["rhubarb", "-q", audio],
