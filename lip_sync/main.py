@@ -64,7 +64,9 @@ def run_rhubarb(audio: str) -> Optional[List[Tuple[str, float]]]:
     return chunks
 
 
-def generate_video(chunks: List[Tuple[str, float]], audio: str, background: str, output: str):
+def generate_video(
+    chunks: List[Tuple[str, float]], audio: str, background: str, output: str
+):
     """Run ffmpeg to generate the video from the chunks
 
     Parameters
@@ -86,7 +88,9 @@ def generate_video(chunks: List[Tuple[str, float]], audio: str, background: str,
                 for i, (image, duration) in enumerate(chunks)
             ],
         ),
-    ).output(ffmpeg.input(audio), output).overwrite_output().run()
+    ).output(
+        ffmpeg.input(audio), output, vcodec="qtrle", pix_fmt="argb"
+    ).overwrite_output().run()
 
 
 @dataclass
@@ -130,7 +134,10 @@ def parse_args() -> Args:
         required=True,
     )
     parser.add_argument(
-        "--background", type=str, help="path to the background file (image or video)", required=True
+        "--background",
+        type=str,
+        help="path to the background file (image or video)",
+        required=True,
     )
     parser.add_argument(
         "--output", type=str, help="name of the output file", required=True
