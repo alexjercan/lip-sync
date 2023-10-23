@@ -12,7 +12,7 @@ from typing import List, Optional, Tuple
 import ffmpeg
 
 
-def run_rhubarb(audio: str, lipsync: str) -> Optional[List[Tuple[str, float]]]:
+def run_rhubarb(audio: str, lipsync: str) -> List[Tuple[str, float]]:
     """Run the rhubarb cli tool to generate the phoneme's
 
     This function will work only with `.wav` or `.ogg` audio formats. This is
@@ -41,31 +41,24 @@ def run_rhubarb(audio: str, lipsync: str) -> Optional[List[Tuple[str, float]]]:
 
     Returns
     -------
-    Optional[List[Tuple[str, float]]]
+    List[Tuple[str, float]]
         The chunks as a list of tuples of png files and durations
     """
     if not audio.endswith(".wav") and not audio.endswith(".ogg"):
-        audio_wav = audio + ".wav"
-        ffmpeg.input(audio).output(audio_wav).overwrite_output().run()
-        audio = audio_wav
+        ffmpeg.input(audio).output(audio + ".wav").overwrite_output().run()
+        audio = audio + ".wav"
 
-    try:
-        result = subprocess.run(
-            ["rhubarb", "-q", audio],
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            shell=False,
-            text=True,
-            check=True,
-        )
-        sync = result.stdout
-    except subprocess.CalledProcessError as e:
-        print(f"Error: {e}")
-        return None
+    sync = subprocess.run(
+        ["rhubarb", "-q", audio],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        shell=False,
+        text=True,
+        check=True,
+    ).stdout
 
     frames = []
-    rd = csv.reader(io.StringIO(sync), delimiter="\t")
-    for time, name in rd:
+    for time, name in csv.reader(io.StringIO(sync), delimiter="\t"):
         frames.append((float(time), name))
 
     chunks = []
@@ -79,14 +72,12 @@ def run_rhubarb(audio: str, lipsync: str) -> Optional[List[Tuple[str, float]]]:
     lips = {}
     lipsync_path = Path(lipsync)
     with open(lipsync_path, "r", encoding="utf-8") as fd:
-        rd = csv.reader(fd)
-        for name, file in rd:
+        for name, file in csv.reader(fd):
             lips[name] = os.path.join(lipsync_path.parent, file)
 
-    for i, (name, duration) in enumerate(chunks):
-        chunks[i] = (lips[name], duration)
-
-    return chunks
+    return [
+        (lips[name], duration) for i, (name, duration) in enumerate(chunks)
+    ]
 
 
 def run_blink(
@@ -123,8 +114,7 @@ def run_blink(
     chunks = []
     while duration > 0:
         wait = random.uniform(min_wait, max_wait)
-        if wait > duration:
-            wait = duration
+        wait = min(wait, duration)
 
         chunks.extend([("A", wait), ("B", 1 / 24), ("C", 1 / 24)])
         duration -= wait + 2 / 24
@@ -144,7 +134,7 @@ def run_blink(
 
 def generate_video(
     lip_chunks: List[Tuple[str, float]],
-    blink_chunks: Optional[Tuple[str, float]],
+    blink_chunks: Optional[List[Tuple[str, float]]],
     audio: str,
     background: Optional[str],
     output: str,
@@ -267,8 +257,6 @@ def main():
     args = parse_args()
 
     lip_chunks = run_rhubarb(args.audio, args.lipsync)
-    assert lip_chunks is not None, "Could not generate the chunks"
-
     blink_chunks = run_blink(args.audio, args.blink)
 
     generate_video(lip_chunks, blink_chunks, args.audio, args.background, args.output)
