@@ -1,9 +1,9 @@
 """Lip Sync from audio file"""
-import random
 import argparse
 import csv
 import io
 import os
+import random
 import subprocess
 from dataclasses import dataclass
 from pathlib import Path
@@ -89,7 +89,9 @@ def run_rhubarb(audio: str, lipsync: str) -> Optional[List[Tuple[str, float]]]:
     return chunks
 
 
-def run_blink(audio: str, blink: Optional[str], min_wait: float = 2.0, max_wait: float = 4.0) -> Optional[List[Tuple[str, float]]]:
+def run_blink(
+    audio: str, blink: Optional[str], min_wait: float = 2.0, max_wait: float = 4.0
+) -> Optional[List[Tuple[str, float]]]:
     """Run the blink cli tool to generate the blink's
 
     Parameters
@@ -141,7 +143,11 @@ def run_blink(audio: str, blink: Optional[str], min_wait: float = 2.0, max_wait:
 
 
 def generate_video(
-        lip_chunks: List[Tuple[str, float]], blink_chunks: Optional[Tuple[str, float]], audio: str, background: str, output: str
+    lip_chunks: List[Tuple[str, float]],
+    blink_chunks: Optional[Tuple[str, float]],
+    audio: str,
+    background: Optional[str],
+    output: str,
 ):
     """Run ffmpeg to generate the video from the chunks
 
@@ -154,20 +160,24 @@ def generate_video(
         if none it will not use blink
     audio : str
         The path to the audio file
-    background : str
-        The path to the background image
+    background : Optional[str]
+        The path to the background image;
+        if none it will not use a background image
     output : str
         The path to the output video file
     """
-    pipe = ffmpeg.overlay(
-        ffmpeg.input(background),
-        ffmpeg.concat(
-            *[
-                ffmpeg.input(image, loop=1, t=duration)
-                for i, (image, duration) in enumerate(lip_chunks)
-            ],
-        ),
+    pipe = ffmpeg.concat(
+        *[
+            ffmpeg.input(image, loop=1, t=duration)
+            for i, (image, duration) in enumerate(lip_chunks)
+        ],
     )
+
+    if background is not None:
+        pipe = ffmpeg.overlay(
+            ffmpeg.input(background),
+            pipe,
+        )
 
     if blink_chunks is not None:
         pipe = ffmpeg.overlay(
@@ -206,7 +216,7 @@ class Args:
     lipsync: str
     blink: Optional[str]
     audio: str
-    background: str
+    background: Optional[str]
     output: str
 
 
@@ -235,7 +245,7 @@ def parse_args() -> Args:
         "--background",
         type=str,
         help="path to the background file (image or video)",
-        required=True,
+        required=False,
     )
     parser.add_argument(
         "--output", type=str, help="name of the output file", required=True
