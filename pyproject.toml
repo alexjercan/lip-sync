@@ -8,7 +8,6 @@ readme = "README.md"
 [tool.poetry.dependencies]
 python = "^3.10"
 ffmpeg-python = "^0.2.0"
-opencv-python = "^4.8.1.78"
 
 [tool.poetry.scripts]
 lip-sync = "lip_sync.main:main"

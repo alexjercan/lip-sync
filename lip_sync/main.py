@@ -1,4 +1,5 @@
 """Lip Sync from audio file"""
+import random
 import argparse
 import csv
 import io
@@ -11,7 +12,7 @@ from typing import List, Optional, Tuple
 import ffmpeg
 
 
-def run_rhubarb(audio: str) -> Optional[List[Tuple[str, float]]]:
+def run_rhubarb(audio: str, lipsync: str) -> Optional[List[Tuple[str, float]]]:
     """Run the rhubarb cli tool to generate the phoneme's
 
     This function will work only with `.wav` or `.ogg` audio formats. This is
@@ -24,21 +25,24 @@ def run_rhubarb(audio: str) -> Optional[List[Tuple[str, float]]]:
     it before running this function.
 
     It will generate a list with tuple elements. Each tuple will contain the
-    alphabetical name of the phoneme (A-H,X) and the duration of that phoneme.
+    path to the PNG file and the duration of that phoneme.
 
     Example
     -------
     > run_rhubarb("some_file.wav")
-    [("A", 0.56), ("X", 1.2), ...]
+    [("a.png", 0.56), ("closed.png", 1.2), ...]
 
     Parameters
     ----------
     audio : str
         The path to the audio file to use
+    lipsync : str
+        The path to the lipsync file
 
-    Return
+    Returns
+    -------
     Optional[List[Tuple[str, float]]]
-        The chunks as a list of tuples of names and durations
+        The chunks as a list of tuples of png files and durations
     """
     if not audio.endswith(".wav") and not audio.endswith(".ogg"):
         audio_wav = audio + ".wav"
@@ -72,18 +76,82 @@ def run_rhubarb(audio: str) -> Optional[List[Tuple[str, float]]]:
         duration = next_stamp - stamp
         chunks.append((name, duration))
 
+    lips = {}
+    lipsync_path = Path(lipsync)
+    with open(lipsync_path, "r", encoding="utf-8") as fd:
+        rd = csv.reader(fd)
+        for name, file in rd:
+            lips[name] = os.path.join(lipsync_path.parent, file)
+
+    for i, (name, duration) in enumerate(chunks):
+        chunks[i] = (lips[name], duration)
+
+    return chunks
+
+
+def run_blink(audio: str, blink: Optional[str], min_wait: float = 2.0, max_wait: float = 4.0) -> Optional[List[Tuple[str, float]]]:
+    """Run the blink cli tool to generate the blink's
+
+    Parameters
+    ----------
+    audio : str
+        The path to the audio file to use
+    blink : str
+        The path to the blink file
+    min_wait : float
+        The minimum time to wait between blinks
+    max_wait : float
+        The maximum time to wait between blinks
+
+    Example
+    -------
+    > run_blink("some_file.wav", "blink.csv")
+    [("open.png", 2.56), ("closed.png", 0.04), ...]
+
+    Returns
+    -------
+    Optional[List[Tuple[str, float]]]
+        The chunks as a list of tuples of names and durations
+    """
+    if blink is None:
+        return None
+
+    duration = float(ffmpeg.probe(audio)["format"]["duration"])
+
+    chunks = []
+    while duration > 0:
+        wait = random.uniform(min_wait, max_wait)
+        if wait > duration:
+            wait = duration
+
+        chunks.extend([("A", wait), ("B", 1 / 24), ("C", 1 / 24)])
+        duration -= wait + 2 / 24
+
+    blinks = {}
+    blink_path = Path(blink)
+    with open(blink_path, "r", encoding="utf-8") as fd:
+        rd = csv.reader(fd)
+        for name, file in rd:
+            blinks[name] = os.path.join(blink_path.parent, file)
+
+    for i, (name, duration) in enumerate(chunks):
+        chunks[i] = (blinks[name], duration)
+
     return chunks
 
 
 def generate_video(
-    chunks: List[Tuple[str, float]], audio: str, background: str, output: str
+        lip_chunks: List[Tuple[str, float]], blink_chunks: Optional[Tuple[str, float]], audio: str, background: str, output: str
 ):
     """Run ffmpeg to generate the video from the chunks
 
     Parameters
     ----------
-    chunks : List[Tuple[str, float]]
+    lip_chunks : List[Tuple[str, float]]
         The chunks containing the path to the images and the duration
+    blink_chunks : Optional[List[Tuple[str, float]]]
+        The chunks containing the path to the blink images and the duration;
+        if none it will not use blink
     audio : str
         The path to the audio file
     background : str
@@ -91,15 +159,28 @@ def generate_video(
     output : str
         The path to the output video file
     """
-    ffmpeg.overlay(
+    pipe = ffmpeg.overlay(
         ffmpeg.input(background),
         ffmpeg.concat(
             *[
                 ffmpeg.input(image, loop=1, t=duration)
-                for i, (image, duration) in enumerate(chunks)
+                for i, (image, duration) in enumerate(lip_chunks)
             ],
         ),
-    ).output(
+    )
+
+    if blink_chunks is not None:
+        pipe = ffmpeg.overlay(
+            pipe,
+            ffmpeg.concat(
+                *[
+                    ffmpeg.input(image, loop=1, t=duration)
+                    for i, (image, duration) in enumerate(blink_chunks)
+                ],
+            ),
+        )
+
+    pipe.output(
         ffmpeg.input(audio), output, vcodec="qtrle", pix_fmt="argb"
     ).overwrite_output().run()
 
@@ -110,8 +191,10 @@ class Args:
 
     Attributes
     ----------
-    mapping : str
+    lipsync : str
         The path to the file that contains the mapping from phoneme to png path
+    blink : Optional[str]
+        The path to the file that contains the blink stages of the character
     audio : str
         The path to the audio file that will be used to perform lip sync
     background : str
@@ -120,7 +203,8 @@ class Args:
         The name of the output file, will be a mkv video file
     """
 
-    mapping: str
+    lipsync: str
+    blink: Optional[str]
     audio: str
     background: str
     output: str
@@ -136,7 +220,10 @@ def parse_args() -> Args:
     """
     parser = argparse.ArgumentParser()
     parser.add_argument(
-        "--mapping", type=str, help="path to the mapping file", required=True
+        "--lipsync", type=str, help="path to the mapping file", required=True
+    )
+    parser.add_argument(
+        "--blink", type=str, help="path to the blink file", required=False
     )
     parser.add_argument(
         "--audio",
@@ -157,7 +244,8 @@ def parse_args() -> Args:
     args = parser.parse_args()
 
     return Args(
-        mapping=args.mapping,
+        lipsync=args.lipsync,
+        blink=args.blink,
         audio=args.audio,
         background=args.background,
         output=args.output,
@@ -168,17 +256,9 @@ def main():
     """Entry Point"""
     args = parse_args()
 
-    chunks = run_rhubarb(args.audio)
-    assert chunks is not None, "Could not generate the chunks"
+    lip_chunks = run_rhubarb(args.audio, args.lipsync)
+    assert lip_chunks is not None, "Could not generate the chunks"
 
-    lips = {}
-    mapping_path = Path(args.mapping)
-    with open(mapping_path, "r", encoding="utf-8") as fd:
-        rd = csv.reader(fd)
-        for name, file in rd:
-            lips[name] = os.path.join(mapping_path.parent, file)
+    blink_chunks = run_blink(args.audio, args.blink)
 
-    for i, (name, duration) in enumerate(chunks):
-        chunks[i] = (lips[name], duration)
-
-    generate_video(chunks, args.audio, args.background, args.output)
+    generate_video(lip_chunks, blink_chunks, args.audio, args.background, args.output)
