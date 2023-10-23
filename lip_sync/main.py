@@ -78,14 +78,14 @@ def generate_video(chunks: List[Tuple[str, float]], audio: str, background: str,
     output : str
         The path to the output video file
     """
-    ffmpeg.concat(
-        *[
-            ffmpeg.overlay(
-                ffmpeg.input(background, loop=1, t=duration).split()[i],
-                ffmpeg.input(image),
-            )
-            for i, (image, duration) in enumerate(chunks)
-        ],
+    ffmpeg.overlay(
+        ffmpeg.input(background),
+        ffmpeg.concat(
+            *[
+                ffmpeg.input(image, loop=1, t=duration)
+                for i, (image, duration) in enumerate(chunks)
+            ],
+        ),
     ).output(ffmpeg.input(audio), output).overwrite_output().run()
 
 
@@ -130,7 +130,7 @@ def parse_args() -> Args:
         required=True,
     )
     parser.add_argument(
-        "--background", type=str, help="path to the background file", required=True
+        "--background", type=str, help="path to the background file (image or video)", required=True
     )
     parser.add_argument(
         "--output", type=str, help="name of the output file", required=True
